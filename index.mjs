@@ -5,6 +5,7 @@ const DEFAULT_CONFIG = {
   enabled: true,
   banDurationSeconds: 600,
   banCooldownSeconds: 30,
+  onlyCheckTextMessage: true,
   recallMessageOnHit: false,
   recallWhenInCooldown: true,
   ignoreAdmin: true,
@@ -62,6 +63,7 @@ function sanitizeConfig(raw) {
     if (typeof raw.enabled === 'boolean') cfg.enabled = raw.enabled;
     if (typeof raw.banDurationSeconds === 'number') cfg.banDurationSeconds = raw.banDurationSeconds;
     if (typeof raw.banCooldownSeconds === 'number') cfg.banCooldownSeconds = raw.banCooldownSeconds;
+    if (typeof raw.onlyCheckTextMessage === 'boolean') cfg.onlyCheckTextMessage = raw.onlyCheckTextMessage;
     if (typeof raw.recallMessageOnHit === 'boolean') cfg.recallMessageOnHit = raw.recallMessageOnHit;
     if (typeof raw.recallWhenInCooldown === 'boolean') cfg.recallWhenInCooldown = raw.recallWhenInCooldown;
     if (typeof raw.ignoreAdmin === 'boolean') cfg.ignoreAdmin = raw.ignoreAdmin;
@@ -162,6 +164,13 @@ function buildConfigUI(ctx) {
     ctx.NapCatConfig.boolean('enabled', '启用插件', true, '关闭后不处理任何消息', true),
     ctx.NapCatConfig.number('banDurationSeconds', '禁言时长（秒）', 600, '建议先从 60~300 秒开始', true),
     ctx.NapCatConfig.number('banCooldownSeconds', '同用户冷却（秒）', 30, '避免重复触发刷屏禁言', true),
+    ctx.NapCatConfig.boolean(
+      'onlyCheckTextMessage',
+      '仅检测文本消息',
+      true,
+      '开启后只检查 text 段内容，图片/卡片等非文本消息默认跳过',
+      true,
+    ),
     ctx.NapCatConfig.boolean('recallMessageOnHit', '命中后撤回消息', false, '开启后命中违禁词会调用 delete_msg 撤回原消息', true),
     ctx.NapCatConfig.boolean(
       'recallWhenInCooldown',
@@ -230,6 +239,28 @@ function extractMessageId(event) {
 
   const text = String(raw).trim();
   return text || '';
+}
+
+function extractTextForMatch(event) {
+  const message = event?.message;
+
+  if (Array.isArray(message)) {
+    const text = message
+      .filter((seg) => seg && typeof seg === 'object' && String(seg.type || '').toLowerCase() === 'text')
+      .map((seg) => String(seg?.data?.text || ''))
+      .join('');
+    return text;
+  }
+
+  if (message && typeof message === 'object' && String(message.type || '').toLowerCase() === 'text') {
+    return String(message?.data?.text || '');
+  }
+
+  const raw = String(event?.raw_message || '');
+  if (!raw) return '';
+
+  const stripped = raw.replace(/\[CQ:[^\]]+\]/g, '').trim();
+  return stripped;
 }
 
 function matchRule(rawMessage) {
@@ -339,8 +370,8 @@ export const plugin_onmessage = async (ctx, event) => {
     return;
   }
 
-  const rawMessage = String(event.raw_message || '');
-  const matched = matchRule(rawMessage);
+  const contentForMatch = runtime.config.onlyCheckTextMessage ? extractTextForMatch(event) : String(event.raw_message || '');
+  const matched = matchRule(contentForMatch);
   if (!matched) {
     return;
   }
