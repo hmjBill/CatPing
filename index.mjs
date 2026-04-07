@@ -5,6 +5,8 @@ const DEFAULT_CONFIG = {
   enabled: true,
   banDurationSeconds: 600,
   banCooldownSeconds: 30,
+  recallMessageOnHit: false,
+  recallWhenInCooldown: true,
   ignoreAdmin: true,
   ignoreOwner: true,
   whitelistUserIdsText: '',
@@ -60,6 +62,8 @@ function sanitizeConfig(raw) {
     if (typeof raw.enabled === 'boolean') cfg.enabled = raw.enabled;
     if (typeof raw.banDurationSeconds === 'number') cfg.banDurationSeconds = raw.banDurationSeconds;
     if (typeof raw.banCooldownSeconds === 'number') cfg.banCooldownSeconds = raw.banCooldownSeconds;
+    if (typeof raw.recallMessageOnHit === 'boolean') cfg.recallMessageOnHit = raw.recallMessageOnHit;
+    if (typeof raw.recallWhenInCooldown === 'boolean') cfg.recallWhenInCooldown = raw.recallWhenInCooldown;
     if (typeof raw.ignoreAdmin === 'boolean') cfg.ignoreAdmin = raw.ignoreAdmin;
     if (typeof raw.ignoreOwner === 'boolean') cfg.ignoreOwner = raw.ignoreOwner;
     if (typeof raw.debug === 'boolean') cfg.debug = raw.debug;
@@ -158,6 +162,14 @@ function buildConfigUI(ctx) {
     ctx.NapCatConfig.boolean('enabled', '启用插件', true, '关闭后不处理任何消息', true),
     ctx.NapCatConfig.number('banDurationSeconds', '禁言时长（秒）', 600, '建议先从 60~300 秒开始', true),
     ctx.NapCatConfig.number('banCooldownSeconds', '同用户冷却（秒）', 30, '避免重复触发刷屏禁言', true),
+    ctx.NapCatConfig.boolean('recallMessageOnHit', '命中后撤回消息', false, '开启后命中违禁词会调用 delete_msg 撤回原消息', true),
+    ctx.NapCatConfig.boolean(
+      'recallWhenInCooldown',
+      '冷却中仍撤回',
+      true,
+      '开启后即便用户处于禁言冷却，命中后仍会尝试撤回消息',
+      true,
+    ),
     ctx.NapCatConfig.boolean('ignoreAdmin', '忽略管理员', true, '管理员命中后不处罚', true),
     ctx.NapCatConfig.boolean('ignoreOwner', '忽略群主', true, '群主命中后不处罚', true),
     ctx.NapCatConfig.text(
@@ -207,6 +219,19 @@ function markCooldown(groupId, userId) {
   runtime.lastBanByUserInGroup.set(`${groupId}:${userId}`, Date.now());
 }
 
+function extractMessageId(event) {
+  const raw = event?.message_id;
+  if (raw === undefined || raw === null) return '';
+
+  const num = Number(raw);
+  if (Number.isFinite(num) && num > 0) {
+    return Math.floor(num);
+  }
+
+  const text = String(raw).trim();
+  return text || '';
+}
+
 function matchRule(rawMessage) {
   const normalized = normalizeText(rawMessage);
   if (!normalized) return '';
@@ -246,6 +271,28 @@ async function banUser(ctx, groupId, userId, reason) {
   }
 }
 
+async function recallMessage(ctx, messageId, reason) {
+  if (!messageId) {
+    if (runtime.config.debug) {
+      ctx.logger.debug(`[CatPing] 跳过撤回：缺少 message_id，原因:${reason}`);
+    }
+    return;
+  }
+
+  const params = { message_id: messageId };
+
+  try {
+    const res = await ctx.actions.call('delete_msg', params, ctx.adapterName, ctx.pluginManager.config);
+    ctx.logger.info(`[CatPing] 已撤回 message_id:${messageId} 原因:${reason}`);
+
+    if (runtime.config.debug) {
+      ctx.logger.debug('[CatPing] delete_msg 返回:', res);
+    }
+  } catch (error) {
+    ctx.logger.error(`[CatPing] 撤回失败 message_id:${messageId} 原因:${reason}`, error);
+  }
+}
+
 export const plugin_init = async (ctx) => {
   runtime.ctx = ctx;
   loadConfig(ctx);
@@ -254,7 +301,7 @@ export const plugin_init = async (ctx) => {
   plugin_config_schema = plugin_config_ui;
 
   ctx.logger.info(
-    `[CatPing] 初始化完成，关键词 ${runtime.keywordRules.length} 个，正则 ${runtime.regexRules.length} 条`,
+    `[CatPing] 初始化完成，关键词 ${runtime.keywordRules.length} 个，正则 ${runtime.regexRules.length} 条，撤回:${runtime.config.recallMessageOnHit ? '开' : '关'}`,
   );
 };
 
@@ -269,6 +316,7 @@ export const plugin_onmessage = async (ctx, event) => {
 
   const groupId = Number(event.group_id);
   const userId = Number(event.user_id);
+  const messageId = extractMessageId(event);
   const senderRole = String(event?.sender?.role || 'member').toLowerCase();
 
   if (!Number.isFinite(groupId) || !Number.isFinite(userId)) {
@@ -298,10 +346,18 @@ export const plugin_onmessage = async (ctx, event) => {
   }
 
   if (inCooldown(groupId, userId)) {
+    if (runtime.config.recallMessageOnHit && runtime.config.recallWhenInCooldown) {
+      await recallMessage(ctx, messageId, `${matched}(冷却期仅撤回)`);
+    }
+
     if (runtime.config.debug) {
       ctx.logger.debug(`[CatPing] 冷却中，跳过处罚 群:${groupId} 用户:${userId}`);
     }
     return;
+  }
+
+  if (runtime.config.recallMessageOnHit) {
+    await recallMessage(ctx, messageId, matched);
   }
 
   await banUser(ctx, groupId, userId, matched);
