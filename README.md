@@ -59,6 +59,7 @@ napcat-plugin-catping/
 - `enabled`: 是否启用插件
 - `banDurationSeconds`: 禁言时长（秒）
 - `banCooldownSeconds`: 同一用户冷却（秒）
+- `onlyCheckTextMessage`: 是否仅检测文本消息（开启后默认跳过图片/卡片等非文本）
 - `recallMessageOnHit`: 命中后是否撤回消息
 - `recallWhenInCooldown`: 用户在禁言冷却中时是否仍撤回消息
 - `ignoreAdmin`: 是否忽略管理员
@@ -113,6 +114,7 @@ napcat-plugin-catping/
   "enabled": true,
   "banDurationSeconds": 300,
   "banCooldownSeconds": 30,
+  "onlyCheckTextMessage": true,
   "recallMessageOnHit": true,
   "recallWhenInCooldown": true,
   "ignoreAdmin": true,
@@ -142,6 +144,7 @@ napcat-plugin-catping/
 ### 4. 常见注意点
 
 - 关键词匹配会忽略大小写和空白字符。
+- `onlyCheckTextMessage=true` 时，插件仅检查文本段；图片/卡片等无文本内容会被跳过。
 - 正则是逐行编译，并统一使用不区分大小写（`i`）模式。
 - 非法正则不会导致插件崩溃，会被跳过并记录警告日志。
 - `whitelistGroupIdsText` 留空表示所有群生效。
