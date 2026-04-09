@@ -1,9 +1,9 @@
 {
   "name": "napcat-plugin-catping",
   "plugin": "CatPing",
-  "version": "0.6.0",
+  "version": "0.7.0",
   "main": "index.mjs",
-  "description": "NapCat 群违禁词与@机器人守卫自动禁言插件",
+  "description": "NapCat 关键词/@机器人/用户ID 三板块自动禁言插件",
   "author": "CatPing Contributors",
   "license": "MIT",
   "keywords": [
