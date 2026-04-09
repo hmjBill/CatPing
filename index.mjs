@@ -4,6 +4,10 @@ import path from 'path';
 const DEFAULT_CONFIG = {
   enabled: true,
   banDurationSeconds: 600,
+  enableMentionGuard: false,
+  mentionMuteDurationSeconds: 1800,
+  mentionGuardGroupIdsText: '',
+  mentionWhitelistUserIdsText: '',
   banCooldownSeconds: 30,
   onlyCheckTextMessage: true,
   recallMessageOnHit: false,
@@ -20,11 +24,14 @@ const DEFAULT_CONFIG = {
 const runtime = {
   ctx: null,
   config: { ...DEFAULT_CONFIG },
+  botUserId: '',
   lastBanByUserInGroup: new Map(),
   keywordRules: [],
   regexRules: [],
   whitelistUsers: new Set(),
   whitelistGroups: new Set(),
+  mentionGuardGroups: new Set(),
+  mentionWhitelistUsers: new Set(),
 };
 
 export let plugin_config_ui = [];
@@ -62,6 +69,12 @@ function sanitizeConfig(raw) {
   if (raw && typeof raw === 'object') {
     if (typeof raw.enabled === 'boolean') cfg.enabled = raw.enabled;
     if (typeof raw.banDurationSeconds === 'number') cfg.banDurationSeconds = raw.banDurationSeconds;
+    if (typeof raw.enableMentionGuard === 'boolean') cfg.enableMentionGuard = raw.enableMentionGuard;
+    if (typeof raw.mentionMuteDurationSeconds === 'number') {
+      cfg.mentionMuteDurationSeconds = raw.mentionMuteDurationSeconds;
+    } else if (typeof raw.muteDuration === 'number') {
+      cfg.mentionMuteDurationSeconds = raw.muteDuration * 60;
+    }
     if (typeof raw.banCooldownSeconds === 'number') cfg.banCooldownSeconds = raw.banCooldownSeconds;
     if (typeof raw.onlyCheckTextMessage === 'boolean') cfg.onlyCheckTextMessage = raw.onlyCheckTextMessage;
     if (typeof raw.recallMessageOnHit === 'boolean') cfg.recallMessageOnHit = raw.recallMessageOnHit;
@@ -82,6 +95,20 @@ function sanitizeConfig(raw) {
       cfg.whitelistGroupIdsText = splitNumberList(raw.whitelistGroupIds).join('\n');
     }
 
+    if (raw.mentionGuardGroupIdsText !== undefined) {
+      cfg.mentionGuardGroupIdsText = String(raw.mentionGuardGroupIdsText);
+    } else if (raw.monitoredGroups !== undefined) {
+      cfg.mentionGuardGroupIdsText = splitNumberList(raw.monitoredGroups).join('\n');
+    }
+
+    if (raw.mentionWhitelistUserIdsText !== undefined) {
+      cfg.mentionWhitelistUserIdsText = String(raw.mentionWhitelistUserIdsText);
+    } else if (raw.mentionWhitelistUserIds !== undefined) {
+      cfg.mentionWhitelistUserIdsText = splitNumberList(raw.mentionWhitelistUserIds).join('\n');
+    } else if (raw.whitelistQQ !== undefined) {
+      cfg.mentionWhitelistUserIdsText = splitNumberList(raw.whitelistQQ).join('\n');
+    }
+
     if (raw.forbiddenWordsText !== undefined) {
       cfg.forbiddenWordsText = String(raw.forbiddenWordsText);
     } else if (raw.forbiddenWords !== undefined) {
@@ -96,6 +123,10 @@ function sanitizeConfig(raw) {
   }
 
   cfg.banDurationSeconds = Math.max(1, Math.min(30 * 24 * 3600, Math.floor(Number(cfg.banDurationSeconds) || 600)));
+  cfg.mentionMuteDurationSeconds = Math.max(
+    1,
+    Math.min(30 * 24 * 3600, Math.floor(Number(cfg.mentionMuteDurationSeconds) || 1800)),
+  );
   cfg.banCooldownSeconds = Math.max(0, Math.min(3600, Math.floor(Number(cfg.banCooldownSeconds) || 30)));
 
   return cfg;
@@ -106,6 +137,8 @@ function buildRuntimeCaches() {
 
   runtime.whitelistUsers = new Set(splitNumberList(cfg.whitelistUserIdsText));
   runtime.whitelistGroups = new Set(splitNumberList(cfg.whitelistGroupIdsText));
+  runtime.mentionGuardGroups = new Set(splitNumberList(cfg.mentionGuardGroupIdsText));
+  runtime.mentionWhitelistUsers = new Set(splitNumberList(cfg.mentionWhitelistUserIdsText));
 
   runtime.keywordRules = splitTextList(cfg.forbiddenWordsText)
     .map((word) => normalizeText(word))
@@ -163,6 +196,22 @@ function buildConfigUI(ctx) {
     ctx.NapCatConfig.plainText('CatPing：违禁词命中后自动禁言（群消息）。'),
     ctx.NapCatConfig.boolean('enabled', '启用插件', true, '关闭后不处理任何消息', true),
     ctx.NapCatConfig.number('banDurationSeconds', '禁言时长（秒）', 600, '建议先从 60~300 秒开始', true),
+    ctx.NapCatConfig.boolean('enableMentionGuard', '启用@机器人守卫', false, '命中@机器人后可单独触发禁言', true),
+    ctx.NapCatConfig.number('mentionMuteDurationSeconds', '@机器人禁言时长（秒）', 1800, '仅在@机器人命中时使用该时长', true),
+    ctx.NapCatConfig.text(
+      'mentionGuardGroupIdsText',
+      '@机器人守卫群列表',
+      '',
+      '留空表示所有群；每行一个群号，或英文逗号分隔',
+      true,
+    ),
+    ctx.NapCatConfig.text(
+      'mentionWhitelistUserIdsText',
+      '@机器人守卫白名单用户',
+      '',
+      '每行一个 QQ 号；命中@机器人时这些用户不处罚',
+      true,
+    ),
     ctx.NapCatConfig.number('banCooldownSeconds', '同用户冷却（秒）', 30, '避免重复触发刷屏禁言', true),
     ctx.NapCatConfig.boolean(
       'onlyCheckTextMessage',
@@ -282,17 +331,59 @@ function matchRule(rawMessage) {
   return '';
 }
 
-async function banUser(ctx, groupId, userId, reason) {
+function isAtUser(event, targetUserId) {
+  if (!targetUserId) return false;
+
+  const message = event?.message;
+  if (Array.isArray(message)) {
+    return message.some(
+      (seg) => seg && typeof seg === 'object' && String(seg.type || '').toLowerCase() === 'at' && String(seg?.data?.qq || '') === targetUserId,
+    );
+  }
+
+  const raw = String(event?.raw_message || '');
+  if (!raw) return false;
+
+  const escapedTarget = String(targetUserId).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const atRegex = new RegExp(`\\[CQ:at,qq=${escapedTarget}(?:,|\\])`);
+  return atRegex.test(raw);
+}
+
+async function ensureBotUserId(ctx, event) {
+  if (runtime.botUserId) return runtime.botUserId;
+
+  const selfId = event?.self_id;
+  if (selfId !== undefined && selfId !== null && String(selfId).trim()) {
+    runtime.botUserId = String(selfId).trim();
+    return runtime.botUserId;
+  }
+
+  try {
+    const info = await ctx.actions.call('get_login_info', undefined, ctx.adapterName, ctx.pluginManager.config);
+    const userId = info?.user_id;
+    if (userId !== undefined && userId !== null && String(userId).trim()) {
+      runtime.botUserId = String(userId).trim();
+    }
+  } catch (error) {
+    if (runtime.config.debug) {
+      ctx.logger.debug(`[CatPing] 获取机器人账号失败: ${error?.message || error}`);
+    }
+  }
+
+  return runtime.botUserId;
+}
+
+async function banUser(ctx, groupId, userId, reason, durationSeconds = runtime.config.banDurationSeconds) {
   const params = {
     group_id: String(groupId),
     user_id: String(userId),
-    duration: runtime.config.banDurationSeconds,
+    duration: durationSeconds,
   };
 
   try {
     const res = await ctx.actions.call('set_group_ban', params, ctx.adapterName, ctx.pluginManager.config);
     markCooldown(groupId, userId);
-    ctx.logger.info(`[CatPing] 已禁言 群:${groupId} 用户:${userId} 时长:${runtime.config.banDurationSeconds}s 原因:${reason}`);
+    ctx.logger.info(`[CatPing] 已禁言 群:${groupId} 用户:${userId} 时长:${durationSeconds}s 原因:${reason}`);
 
     if (runtime.config.debug) {
       ctx.logger.debug('[CatPing] set_group_ban 返回:', res);
@@ -332,7 +423,7 @@ export const plugin_init = async (ctx) => {
   plugin_config_schema = plugin_config_ui;
 
   ctx.logger.info(
-    `[CatPing] 初始化完成，关键词 ${runtime.keywordRules.length} 个，正则 ${runtime.regexRules.length} 条，撤回:${runtime.config.recallMessageOnHit ? '开' : '关'}`,
+    `[CatPing] 初始化完成，关键词 ${runtime.keywordRules.length} 个，正则 ${runtime.regexRules.length} 条，@守卫:${runtime.config.enableMentionGuard ? '开' : '关'}，撤回:${runtime.config.recallMessageOnHit ? '开' : '关'}`,
   );
 };
 
@@ -371,14 +462,34 @@ export const plugin_onmessage = async (ctx, event) => {
   }
 
   const contentForMatch = runtime.config.onlyCheckTextMessage ? extractTextForMatch(event) : String(event.raw_message || '');
+  const hitReasons = [];
+  let durationSeconds = runtime.config.banDurationSeconds;
+
+  if (runtime.config.enableMentionGuard) {
+    const groupAllowed = runtime.mentionGuardGroups.size === 0 || runtime.mentionGuardGroups.has(groupId);
+    const userAllowed = !runtime.mentionWhitelistUsers.has(userId);
+    if (groupAllowed && userAllowed) {
+      const botUserId = await ensureBotUserId(ctx, event);
+      if (botUserId && isAtUser(event, botUserId)) {
+        hitReasons.push('@机器人');
+        durationSeconds = Math.max(durationSeconds, runtime.config.mentionMuteDurationSeconds);
+      }
+    }
+  }
+
   const matched = matchRule(contentForMatch);
-  if (!matched) {
+  if (matched) {
+    hitReasons.push(matched);
+  }
+
+  if (hitReasons.length === 0) {
     return;
   }
+  const hitReasonText = hitReasons.join(' + ');
 
   if (inCooldown(groupId, userId)) {
     if (runtime.config.recallMessageOnHit && runtime.config.recallWhenInCooldown) {
-      await recallMessage(ctx, messageId, `${matched}(冷却期仅撤回)`);
+      await recallMessage(ctx, messageId, `${hitReasonText}(冷却期仅撤回)`);
     }
 
     if (runtime.config.debug) {
@@ -388,15 +499,16 @@ export const plugin_onmessage = async (ctx, event) => {
   }
 
   if (runtime.config.recallMessageOnHit) {
-    await recallMessage(ctx, messageId, matched);
+    await recallMessage(ctx, messageId, hitReasonText);
   }
 
-  await banUser(ctx, groupId, userId, matched);
+  await banUser(ctx, groupId, userId, hitReasonText, durationSeconds);
 };
 
 export const plugin_cleanup = async (ctx) => {
   saveConfig(ctx);
   runtime.lastBanByUserInGroup.clear();
+  runtime.botUserId = '';
   ctx.logger.info('[CatPing] 插件已卸载');
 };
 

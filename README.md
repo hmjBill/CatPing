@@ -4,6 +4,7 @@ CatPing 是一个 NapCat 官方插件风格的轻量群管插件，专注于：
 
 - 监听群消息
 - 命中违禁词后自动禁言
+- 可选监测 `@机器人` 并自动禁言
 - 可选命中后自动撤回原消息
 - 支持白名单、管理员免罚、冷却防抖
 
@@ -58,6 +59,10 @@ napcat-plugin-catping/
 
 - `enabled`: 是否启用插件
 - `banDurationSeconds`: 禁言时长（秒）
+- `enableMentionGuard`: 是否启用 `@机器人` 守卫
+- `mentionMuteDurationSeconds`: `@机器人` 命中时的禁言时长（秒）
+- `mentionGuardGroupIdsText`: `@机器人` 守卫生效群（每行一个群号，留空表示所有群）
+- `mentionWhitelistUserIdsText`: `@机器人` 守卫白名单（每行一个 QQ 号）
 - `banCooldownSeconds`: 同一用户冷却（秒）
 - `onlyCheckTextMessage`: 是否仅检测文本消息（开启后默认跳过图片/卡片等非文本）
 - `recallMessageOnHit`: 命中后是否撤回消息
@@ -80,6 +85,8 @@ napcat-plugin-catping/
 - `regexRulesText`
 - `whitelistUserIdsText`
 - `whitelistGroupIdsText`
+- `mentionGuardGroupIdsText`
+- `mentionWhitelistUserIdsText`
 
 支持的分隔符：
 
@@ -113,6 +120,10 @@ napcat-plugin-catping/
 {
   "enabled": true,
   "banDurationSeconds": 300,
+  "enableMentionGuard": true,
+  "mentionMuteDurationSeconds": 1800,
+  "mentionGuardGroupIdsText": "100001,100002",
+  "mentionWhitelistUserIdsText": "12345678",
   "banCooldownSeconds": 30,
   "onlyCheckTextMessage": true,
   "recallMessageOnHit": true,
@@ -135,6 +146,9 @@ napcat-plugin-catping/
 - `regexRules`
 - `whitelistUserIds`
 - `whitelistGroupIds`
+- `monitoredGroups`（映射到 `mentionGuardGroupIdsText`）
+- `whitelistQQ`（映射到 `mentionWhitelistUserIdsText`）
+- `muteDuration`（分钟，映射到 `mentionMuteDurationSeconds`）
 
 优先级规则：
 
@@ -148,6 +162,7 @@ napcat-plugin-catping/
 - 正则是逐行编译，并统一使用不区分大小写（`i`）模式。
 - 非法正则不会导致插件崩溃，会被跳过并记录警告日志。
 - `whitelistGroupIdsText` 留空表示所有群生效。
+- `mentionGuardGroupIdsText` 留空表示所有群都参与 `@机器人` 守卫。
 
 ## 触发逻辑
 
@@ -156,13 +171,9 @@ napcat-plugin-catping/
 1. 判断是否启用
 2. 判断群/用户是否在白名单
 3. 判断是否为管理员/群主（可免罚）
-4. 匹配关键词或正则
-5. 若命中且开启撤回，则调用 `delete_msg` 撤回原消息
-6. 未命中冷却则调用 `set_group_ban`
-7. 命中冷却时：默认仅跳过禁言；若开启 `recallWhenInCooldown` 则仍尝试撤回消息
-
-## 使用建议
-
-- 首次上线建议先设短时禁言（60~300 秒）
-- 先从小词表开始，逐步扩展
-- 正则尽量精准，避免过宽匹配
+4. 若启用 `@机器人` 守卫：在守卫生效群内检测是否 `@` 机器人，且用户不在守卫白名单
+5. 匹配关键词或正则
+6. 任一规则命中后进入处罚流程；若同时命中，处罚原因会合并记录，禁言时长取命中规则中的较大值
+7. 若命中且开启撤回，则调用 `delete_msg` 撤回原消息
+8. 未命中冷却则调用 `set_group_ban`
+9. 命中冷却时：默认仅跳过禁言；若开启 `recallWhenInCooldown` 则仍尝试撤回消息
