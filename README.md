@@ -5,7 +5,7 @@ CatPing 是一个 NapCat 官方插件风格的轻量群管插件，专注于：
 - 监听群消息
 - 命中违禁词后自动禁言
 - 可选监测 `@机器人` 并自动禁言
-- 可选监测目标用户 ID 命中并自动禁言
+- 可选检测发言者违禁用户 ID 并执行改名片/禁言
 - 可选命中后自动撤回原消息
 - 支持白名单、管理员免罚、冷却防抖
 
@@ -69,6 +69,7 @@ napcat-plugin-catping/
 - `keywordMuteDurationSeconds`
 - `keywordGuardGroupIdsText`
 - `keywordWhitelistUserIdsText`
+- `onlyCheckTextMessage`（仅关键词板块生效）
 - `forbiddenWordsText`: 违禁词（每行一个）
 - `regexRulesText`: 正则规则（每行一个）
 - `recallKeywordMessageOnHit`
@@ -184,7 +185,7 @@ napcat-plugin-catping/
 ### 4. 常见注意点
 
 - 关键词匹配会忽略大小写和空白字符。
-- `onlyCheckTextMessage=true` 时，插件仅检查文本段；图片/卡片等无文本内容会被跳过。
+- `onlyCheckTextMessage=true` 时，仅关键词板块检查文本段；关闭后关键词板块使用 `raw_message`。
 - 正则是逐行编译，并统一使用不区分大小写（`i`）模式。
 - 非法正则不会导致插件崩溃，会被跳过并记录警告日志。
 - `keywordGuardGroupIdsText` 留空表示关键词板块在所有群生效。
