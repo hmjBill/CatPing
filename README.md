@@ -85,9 +85,12 @@ napcat-plugin-catping/
 用户 ID 板块：
 - `enableUserIdGuard`
 - `userIdMuteDurationSeconds`
-- `targetUserIdsText`（目标 ID 列表，每行一个）
+- `forbiddenUserIdsText`（违禁用户 ID 列表，每行一个，检测发言者 ID）
 - `userIdGuardGroupIdsText`
 - `userIdWhitelistUserIdsText`
+- `userIdReplaceCardOnHit`（命中后是否修改群名片）
+- `userIdReplacementText`（命中后设置的群名片文本）
+- `banUserIdOnHit`（命中后是否执行禁言）
 - `recallUserIdMessageOnHit`
 - `recallUserIdWhenInCooldown`
 
@@ -103,7 +106,7 @@ napcat-plugin-catping/
 - `keywordWhitelistUserIdsText`
 - `mentionGuardGroupIdsText`
 - `mentionWhitelistUserIdsText`
-- `targetUserIdsText`
+- `forbiddenUserIdsText`
 - `userIdGuardGroupIdsText`
 - `userIdWhitelistUserIdsText`
 
@@ -161,9 +164,12 @@ napcat-plugin-catping/
 
   "enableUserIdGuard": true,
   "userIdMuteDurationSeconds": 1200,
-  "targetUserIdsText": "12345678\n87654321",
+  "forbiddenUserIdsText": "12345678\n87654321",
   "userIdGuardGroupIdsText": "100001",
   "userIdWhitelistUserIdsText": "10000",
+  "userIdReplaceCardOnHit": true,
+  "userIdReplacementText": "非法id，请改回去",
+  "banUserIdOnHit": false,
   "recallUserIdMessageOnHit": true,
   "recallUserIdWhenInCooldown": true,
 
@@ -185,7 +191,7 @@ napcat-plugin-catping/
 - `muteDuration`（分钟，映射到 `mentionMuteDurationSeconds`）
 - `recallMessageOnHit`（映射到 `recallKeywordMessageOnHit` / `recallMentionMessageOnHit` / `recallUserIdMessageOnHit`）
 - `recallWhenInCooldown`（映射到 `recallKeywordWhenInCooldown` / `recallMentionWhenInCooldown` / `recallUserIdWhenInCooldown`）
-- `targetUserIds`（映射到 `targetUserIdsText`）
+- `targetUserIds`（映射到 `forbiddenUserIdsText`）
 
 优先级规则：
 
@@ -201,7 +207,7 @@ napcat-plugin-catping/
 - `keywordGuardGroupIdsText` 留空表示关键词板块在所有群生效。
 - `mentionGuardGroupIdsText` 留空表示所有群都参与 `@机器人` 守卫。
 - `userIdGuardGroupIdsText` 留空表示用户 ID 板块在所有群生效。
-- 用户 ID 命中会检测 `at` 段和文本中的数字边界匹配。
+- 用户 ID 板块检测的是“发言者自己的 user_id 是否在违禁列表”。
 
 ## 触发逻辑
 
@@ -211,8 +217,9 @@ napcat-plugin-catping/
 2. 判断是否为管理员/群主（可免罚）
 3. 关键词板块：按关键词监控群 + 白名单用户过滤后执行关键词/正则匹配
 4. `@机器人` 板块：按守卫群 + 白名单用户过滤后检测 `@机器人`
-5. 用户 ID 板块：按监控群 + 白名单用户过滤后检测是否命中目标用户 ID
+5. 用户 ID 板块：按监控群 + 白名单用户过滤后检测发言者 user_id 是否命中违禁列表
 6. 任一板块命中后进入处罚流程；若同时命中，处罚原因会合并记录，禁言时长取命中板块中的较大值
-7. 若命中且对应撤回开关开启，则调用 `delete_msg` 撤回原消息
-8. 未命中冷却则调用 `set_group_ban`
-9. 命中冷却时：默认仅跳过禁言；若对应的“冷却中仍撤回”开关开启则仍尝试撤回消息
+7. 若用户 ID 板块命中且 `userIdReplaceCardOnHit=true`，调用 `set_group_card` 把群名片改为 `userIdReplacementText`
+8. 若命中且对应撤回开关开启，则调用 `delete_msg` 撤回原消息
+9. 需要禁言时调用 `set_group_ban`；用户 ID 板块是否禁言由 `banUserIdOnHit` 控制
+10. 命中冷却时：默认仅跳过禁言；若对应的“冷却中仍撤回”开关开启则仍尝试撤回消息
