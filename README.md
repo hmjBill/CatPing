@@ -65,8 +65,10 @@ napcat-plugin-catping/
 - `mentionWhitelistUserIdsText`: `@机器人` 守卫白名单（每行一个 QQ 号）
 - `banCooldownSeconds`: 同一用户冷却（秒）
 - `onlyCheckTextMessage`: 是否仅检测文本消息（开启后默认跳过图片/卡片等非文本）
-- `recallMessageOnHit`: 命中后是否撤回消息
-- `recallWhenInCooldown`: 用户在禁言冷却中时是否仍撤回消息
+- `recallKeywordMessageOnHit`: 违禁词命中后是否撤回消息
+- `recallMentionMessageOnHit`: `@机器人` 命中后是否撤回消息
+- `recallKeywordWhenInCooldown`: 违禁词命中且在冷却中时是否仍撤回
+- `recallMentionWhenInCooldown`: `@机器人` 命中且在冷却中时是否仍撤回
 - `ignoreAdmin`: 是否忽略管理员
 - `ignoreOwner`: 是否忽略群主
 - `whitelistUserIdsText`: 用户白名单（每行一个 QQ 号）
@@ -126,8 +128,10 @@ napcat-plugin-catping/
   "mentionWhitelistUserIdsText": "12345678",
   "banCooldownSeconds": 30,
   "onlyCheckTextMessage": true,
-  "recallMessageOnHit": true,
-  "recallWhenInCooldown": true,
+  "recallKeywordMessageOnHit": true,
+  "recallMentionMessageOnHit": false,
+  "recallKeywordWhenInCooldown": true,
+  "recallMentionWhenInCooldown": false,
   "ignoreAdmin": true,
   "ignoreOwner": true,
   "whitelistUserIdsText": "12345678\n87654321",
@@ -149,6 +153,8 @@ napcat-plugin-catping/
 - `monitoredGroups`（映射到 `mentionGuardGroupIdsText`）
 - `whitelistQQ`（映射到 `mentionWhitelistUserIdsText`）
 - `muteDuration`（分钟，映射到 `mentionMuteDurationSeconds`）
+- `recallMessageOnHit`（映射到 `recallKeywordMessageOnHit` 与 `recallMentionMessageOnHit`）
+- `recallWhenInCooldown`（映射到 `recallKeywordWhenInCooldown` 与 `recallMentionWhenInCooldown`）
 
 优先级规则：
 
@@ -174,6 +180,6 @@ napcat-plugin-catping/
 4. 若启用 `@机器人` 守卫：在守卫生效群内检测是否 `@` 机器人，且用户不在守卫白名单
 5. 匹配关键词或正则
 6. 任一规则命中后进入处罚流程；若同时命中，处罚原因会合并记录，禁言时长取命中规则中的较大值
-7. 若命中且开启撤回，则调用 `delete_msg` 撤回原消息
+7. 若命中且对应撤回开关开启，则调用 `delete_msg` 撤回原消息
 8. 未命中冷却则调用 `set_group_ban`
-9. 命中冷却时：默认仅跳过禁言；若开启 `recallWhenInCooldown` 则仍尝试撤回消息
+9. 命中冷却时：默认仅跳过禁言；若对应的“冷却中仍撤回”开关开启则仍尝试撤回消息
