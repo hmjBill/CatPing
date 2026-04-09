@@ -328,13 +328,13 @@ function buildConfigUI(ctx) {
       true,
     ),
     ctx.NapCatConfig.plainText('【用户ID板块】'),
-    ctx.NapCatConfig.boolean('enableUserIdGuard', '启用用户ID检测', false, '检测发言者 user_id 是否在违禁列表中', true),
+    ctx.NapCatConfig.boolean('enableUserIdGuard', '启用用户ID检测', false, '检测发言者群名片/昵称是否包含违禁ID', true),
     ctx.NapCatConfig.number('userIdMuteDurationSeconds', '用户ID命中禁言时长（秒）', 1800, '仅用户ID命中时使用', true),
     ctx.NapCatConfig.text(
       'forbiddenUserIdsText',
       '违禁用户ID列表',
       '',
-      '每行一个 QQ 号；发言者ID命中列表即触发',
+      '每行一个违禁ID；发言者群名片/昵称包含时触发',
       true,
     ),
     ctx.NapCatConfig.text(
@@ -348,7 +348,7 @@ function buildConfigUI(ctx) {
       'userIdWhitelistUserIdsText',
       '用户ID检测白名单用户',
       '',
-      '每行一个 QQ 号；这些用户命中违禁ID规则时不处罚',
+      '每行一个 QQ 号；这些用户命中违禁ID昵称规则时不处罚',
       true,
     ),
     ctx.NapCatConfig.boolean(
@@ -474,9 +474,23 @@ function isAtUser(event, targetUserId) {
   return atRegex.test(raw);
 }
 
-function isForbiddenSenderUserId(userId) {
-  if (runtime.forbiddenUserIds.size === 0) return false;
-  return runtime.forbiddenUserIds.has(userId);
+function findForbiddenIdInSenderName(event) {
+  if (runtime.forbiddenUserIds.size === 0) return '';
+
+  const cardName = String(event?.sender?.card || '').trim();
+  const nickName = String(event?.sender?.nickname || '').trim();
+  const displayName = cardName || nickName;
+  if (!displayName) return '';
+
+  for (const forbiddenId of runtime.forbiddenUserIds) {
+    const escapedId = forbiddenId.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const matcher = new RegExp(`(^|\\D)${escapedId}(\\D|$)`);
+    if (matcher.test(displayName)) {
+      return forbiddenId;
+    }
+  }
+
+  return '';
 }
 
 async function ensureBotUserId(ctx, event) {
@@ -639,8 +653,9 @@ export const plugin_onmessage = async (ctx, event) => {
     const groupAllowed = runtime.userIdGuardGroups.size === 0 || runtime.userIdGuardGroups.has(groupId);
     const userAllowed = !runtime.userIdWhitelistUsers.has(userId);
     if (groupAllowed && userAllowed) {
-      if (isForbiddenSenderUserId(userId)) {
-        hitReasons.push(`用户ID:${userId}`);
+      const matchedForbiddenId = findForbiddenIdInSenderName(event);
+      if (matchedForbiddenId) {
+        hitReasons.push(`用户昵称ID:${matchedForbiddenId}`);
         hitUserId = true;
         if (runtime.config.banUserIdOnHit) {
           durationSeconds = Math.max(durationSeconds, runtime.config.userIdMuteDurationSeconds);
