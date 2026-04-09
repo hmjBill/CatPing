@@ -5,6 +5,7 @@ CatPing 是一个 NapCat 官方插件风格的轻量群管插件，专注于：
 - 监听群消息
 - 命中违禁词后自动禁言
 - 可选监测 `@机器人` 并自动禁言
+- 可选监测目标用户 ID 命中并自动禁言
 - 可选命中后自动撤回原消息
 - 支持白名单、管理员免罚、冷却防抖
 
@@ -58,24 +59,37 @@ napcat-plugin-catping/
 ## 配置项说明
 
 - `enabled`: 是否启用插件
-- `banDurationSeconds`: 禁言时长（秒）
-- `enableMentionGuard`: 是否启用 `@机器人` 守卫
-- `mentionMuteDurationSeconds`: `@机器人` 命中时的禁言时长（秒）
-- `mentionGuardGroupIdsText`: `@机器人` 守卫生效群（每行一个群号，留空表示所有群）
-- `mentionWhitelistUserIdsText`: `@机器人` 守卫白名单（每行一个 QQ 号）
 - `banCooldownSeconds`: 同一用户冷却（秒）
-- `onlyCheckTextMessage`: 是否仅检测文本消息（开启后默认跳过图片/卡片等非文本）
-- `recallKeywordMessageOnHit`: 违禁词命中后是否撤回消息
-- `recallMentionMessageOnHit`: `@机器人` 命中后是否撤回消息
-- `recallKeywordWhenInCooldown`: 违禁词命中且在冷却中时是否仍撤回
-- `recallMentionWhenInCooldown`: `@机器人` 命中且在冷却中时是否仍撤回
 - `ignoreAdmin`: 是否忽略管理员
 - `ignoreOwner`: 是否忽略群主
-- `whitelistUserIdsText`: 用户白名单（每行一个 QQ 号）
-- `whitelistGroupIdsText`: 群白名单（每行一个群号，留空表示所有群）
+- `debug`: 调试日志
+
+关键词板块：
+- `enableKeywordGuard`
+- `keywordMuteDurationSeconds`
+- `keywordGuardGroupIdsText`
+- `keywordWhitelistUserIdsText`
 - `forbiddenWordsText`: 违禁词（每行一个）
 - `regexRulesText`: 正则规则（每行一个）
-- `debug`: 调试日志
+- `recallKeywordMessageOnHit`
+- `recallKeywordWhenInCooldown`
+
+`@机器人` 板块：
+- `enableMentionGuard`
+- `mentionMuteDurationSeconds`
+- `mentionGuardGroupIdsText`
+- `mentionWhitelistUserIdsText`
+- `recallMentionMessageOnHit`
+- `recallMentionWhenInCooldown`
+
+用户 ID 板块：
+- `enableUserIdGuard`
+- `userIdMuteDurationSeconds`
+- `targetUserIdsText`（目标 ID 列表，每行一个）
+- `userIdGuardGroupIdsText`
+- `userIdWhitelistUserIdsText`
+- `recallUserIdMessageOnHit`
+- `recallUserIdWhenInCooldown`
 
 ## Config 写法细节
 
@@ -85,10 +99,13 @@ napcat-plugin-catping/
 
 - `forbiddenWordsText`
 - `regexRulesText`
-- `whitelistUserIdsText`
-- `whitelistGroupIdsText`
+- `keywordGuardGroupIdsText`
+- `keywordWhitelistUserIdsText`
 - `mentionGuardGroupIdsText`
 - `mentionWhitelistUserIdsText`
+- `targetUserIdsText`
+- `userIdGuardGroupIdsText`
+- `userIdWhitelistUserIdsText`
 
 支持的分隔符：
 
@@ -121,23 +138,35 @@ napcat-plugin-catping/
 ```json
 {
   "enabled": true,
-  "banDurationSeconds": 300,
+  "banCooldownSeconds": 30,
+  "ignoreAdmin": true,
+  "ignoreOwner": true,
+  "onlyCheckTextMessage": true,
+
+  "enableKeywordGuard": true,
+  "keywordMuteDurationSeconds": 300,
+  "keywordGuardGroupIdsText": "100001,100002",
+  "keywordWhitelistUserIdsText": "12345678",
+  "forbiddenWordsText": "广告\n引流,赌博",
+  "regexRulesText": "\\bspam\\b\n(?:买|卖).{0,6}(号|群)",
+  "recallKeywordMessageOnHit": true,
+  "recallKeywordWhenInCooldown": true,
+
   "enableMentionGuard": true,
   "mentionMuteDurationSeconds": 1800,
   "mentionGuardGroupIdsText": "100001,100002",
   "mentionWhitelistUserIdsText": "12345678",
-  "banCooldownSeconds": 30,
-  "onlyCheckTextMessage": true,
-  "recallKeywordMessageOnHit": true,
   "recallMentionMessageOnHit": false,
-  "recallKeywordWhenInCooldown": true,
   "recallMentionWhenInCooldown": false,
-  "ignoreAdmin": true,
-  "ignoreOwner": true,
-  "whitelistUserIdsText": "12345678\n87654321",
-  "whitelistGroupIdsText": "100001,100002",
-  "forbiddenWordsText": "广告\n引流,赌博",
-  "regexRulesText": "\\bspam\\b\n(?:买|卖).{0,6}(号|群)",
+
+  "enableUserIdGuard": true,
+  "userIdMuteDurationSeconds": 1200,
+  "targetUserIdsText": "12345678\n87654321",
+  "userIdGuardGroupIdsText": "100001",
+  "userIdWhitelistUserIdsText": "10000",
+  "recallUserIdMessageOnHit": true,
+  "recallUserIdWhenInCooldown": true,
+
   "debug": false
 }
 ```
@@ -148,13 +177,15 @@ napcat-plugin-catping/
 
 - `forbiddenWords`
 - `regexRules`
-- `whitelistUserIds`
-- `whitelistGroupIds`
+- `whitelistUserIds`（映射到 `keywordWhitelistUserIdsText`）
+- `whitelistGroupIds`（映射到 `keywordGuardGroupIdsText`）
+- `banDurationSeconds`（映射到 `keywordMuteDurationSeconds`）
 - `monitoredGroups`（映射到 `mentionGuardGroupIdsText`）
 - `whitelistQQ`（映射到 `mentionWhitelistUserIdsText`）
 - `muteDuration`（分钟，映射到 `mentionMuteDurationSeconds`）
-- `recallMessageOnHit`（映射到 `recallKeywordMessageOnHit` 与 `recallMentionMessageOnHit`）
-- `recallWhenInCooldown`（映射到 `recallKeywordWhenInCooldown` 与 `recallMentionWhenInCooldown`）
+- `recallMessageOnHit`（映射到 `recallKeywordMessageOnHit` / `recallMentionMessageOnHit` / `recallUserIdMessageOnHit`）
+- `recallWhenInCooldown`（映射到 `recallKeywordWhenInCooldown` / `recallMentionWhenInCooldown` / `recallUserIdWhenInCooldown`）
+- `targetUserIds`（映射到 `targetUserIdsText`）
 
 优先级规则：
 
@@ -167,19 +198,21 @@ napcat-plugin-catping/
 - `onlyCheckTextMessage=true` 时，插件仅检查文本段；图片/卡片等无文本内容会被跳过。
 - 正则是逐行编译，并统一使用不区分大小写（`i`）模式。
 - 非法正则不会导致插件崩溃，会被跳过并记录警告日志。
-- `whitelistGroupIdsText` 留空表示所有群生效。
+- `keywordGuardGroupIdsText` 留空表示关键词板块在所有群生效。
 - `mentionGuardGroupIdsText` 留空表示所有群都参与 `@机器人` 守卫。
+- `userIdGuardGroupIdsText` 留空表示用户 ID 板块在所有群生效。
+- 用户 ID 命中会检测 `at` 段和文本中的数字边界匹配。
 
 ## 触发逻辑
 
 仅处理 `group` 消息：
 
 1. 判断是否启用
-2. 判断群/用户是否在白名单
-3. 判断是否为管理员/群主（可免罚）
-4. 若启用 `@机器人` 守卫：在守卫生效群内检测是否 `@` 机器人，且用户不在守卫白名单
-5. 匹配关键词或正则
-6. 任一规则命中后进入处罚流程；若同时命中，处罚原因会合并记录，禁言时长取命中规则中的较大值
+2. 判断是否为管理员/群主（可免罚）
+3. 关键词板块：按关键词监控群 + 白名单用户过滤后执行关键词/正则匹配
+4. `@机器人` 板块：按守卫群 + 白名单用户过滤后检测 `@机器人`
+5. 用户 ID 板块：按监控群 + 白名单用户过滤后检测是否命中目标用户 ID
+6. 任一板块命中后进入处罚流程；若同时命中，处罚原因会合并记录，禁言时长取命中板块中的较大值
 7. 若命中且对应撤回开关开启，则调用 `delete_msg` 撤回原消息
 8. 未命中冷却则调用 `set_group_ban`
 9. 命中冷却时：默认仅跳过禁言；若对应的“冷却中仍撤回”开关开启则仍尝试撤回消息
