@@ -48,6 +48,7 @@ const runtime = {
   userIdGuardGroups: new Set(),
   userIdWhitelistUsers: new Set(),
   forbiddenUserIds: new Set(),
+  forbiddenUserNameRules: [],
 };
 
 export let plugin_config_ui = [];
@@ -87,6 +88,15 @@ function splitIdList(value) {
   return splitTextList(value)
     .map((item) => canonicalId(item))
     .filter(Boolean);
+}
+
+function buildNameRules(value) {
+  return splitTextList(value)
+    .map((item) => ({
+      raw: item,
+      normalized: normalizeText(item),
+    }))
+    .filter((item) => Boolean(item.normalized));
 }
 
 function sanitizeConfig(raw) {
@@ -184,6 +194,7 @@ function buildRuntimeCaches() {
   runtime.userIdGuardGroups = new Set(splitIdList(cfg.userIdGuardGroupIdsText));
   runtime.userIdWhitelistUsers = new Set(splitIdList(cfg.userIdWhitelistUserIdsText));
   runtime.forbiddenUserIds = new Set(splitIdList(cfg.forbiddenUserIdsText));
+  runtime.forbiddenUserNameRules = buildNameRules(cfg.forbiddenUserIdsText);
 
   runtime.keywordRules = splitTextList(cfg.forbiddenWordsText)
     .map((word) => normalizeText(word))
@@ -332,9 +343,9 @@ function buildConfigUI(ctx) {
     ctx.NapCatConfig.number('userIdMuteDurationSeconds', '用户ID命中禁言时长（秒）', 1800, '仅用户ID命中时使用', true),
     ctx.NapCatConfig.text(
       'forbiddenUserIdsText',
-      '违禁用户ID列表',
+      '违禁昵称词条列表',
       '',
-      '每行一个违禁ID；发言者群名片/昵称包含时触发',
+      '每行一个词条；发言者群名片/昵称包含时触发（忽略空白和大小写）',
       true,
     ),
     ctx.NapCatConfig.text(
@@ -475,18 +486,18 @@ function isAtUser(event, targetUserId) {
 }
 
 function findForbiddenIdInSenderName(event) {
-  if (runtime.forbiddenUserIds.size === 0) return '';
+  if (runtime.forbiddenUserNameRules.length === 0) return '';
 
   const cardName = String(event?.sender?.card || '').trim();
   const nickName = String(event?.sender?.nickname || '').trim();
   const displayName = cardName || nickName;
   if (!displayName) return '';
+  const normalizedDisplayName = normalizeText(displayName);
+  if (!normalizedDisplayName) return '';
 
-  for (const forbiddenId of runtime.forbiddenUserIds) {
-    const escapedId = forbiddenId.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    const matcher = new RegExp(`(^|\\D)${escapedId}(\\D|$)`);
-    if (matcher.test(displayName)) {
-      return forbiddenId;
+  for (const rule of runtime.forbiddenUserNameRules) {
+    if (normalizedDisplayName.includes(rule.normalized)) {
+      return rule.raw;
     }
   }
 
@@ -585,7 +596,7 @@ export const plugin_init = async (ctx) => {
   plugin_config_schema = plugin_config_ui;
 
   ctx.logger.info(
-    `[CatPing] 初始化完成，关键词守卫:${runtime.config.enableKeywordGuard ? '开' : '关'}，@守卫:${runtime.config.enableMentionGuard ? '开' : '关'}，用户ID守卫:${runtime.config.enableUserIdGuard ? '开' : '关'}，关键词 ${runtime.keywordRules.length} 个，正则 ${runtime.regexRules.length} 条，违禁ID ${runtime.forbiddenUserIds.size} 个`,
+    `[CatPing] 初始化完成，关键词守卫:${runtime.config.enableKeywordGuard ? '开' : '关'}，@守卫:${runtime.config.enableMentionGuard ? '开' : '关'}，用户ID守卫:${runtime.config.enableUserIdGuard ? '开' : '关'}，关键词 ${runtime.keywordRules.length} 个，正则 ${runtime.regexRules.length} 条，违禁昵称规则 ${runtime.forbiddenUserNameRules.length} 条`,
   );
 };
 
