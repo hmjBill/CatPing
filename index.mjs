@@ -262,6 +262,13 @@ function buildConfigUI(ctx) {
       true,
     ),
     ctx.NapCatConfig.boolean(
+      'onlyCheckTextMessage',
+      '关键词仅检测文本消息',
+      true,
+      '开启后关键词板块只检查 text 段内容；关闭后使用 raw_message',
+      true,
+    ),
+    ctx.NapCatConfig.boolean(
       'recallKeywordMessageOnHit',
       '关键词命中后撤回',
       false,
@@ -321,7 +328,7 @@ function buildConfigUI(ctx) {
       true,
     ),
     ctx.NapCatConfig.plainText('【用户ID板块】'),
-    ctx.NapCatConfig.boolean('enableUserIdGuard', '启用用户ID检测', false, '检测消息中命中的目标用户ID', true),
+    ctx.NapCatConfig.boolean('enableUserIdGuard', '启用用户ID检测', false, '检测发言者 user_id 是否在违禁列表中', true),
     ctx.NapCatConfig.number('userIdMuteDurationSeconds', '用户ID命中禁言时长（秒）', 1800, '仅用户ID命中时使用', true),
     ctx.NapCatConfig.text(
       'forbiddenUserIdsText',
@@ -341,7 +348,7 @@ function buildConfigUI(ctx) {
       'userIdWhitelistUserIdsText',
       '用户ID检测白名单用户',
       '',
-      '每行一个 QQ 号；这些用户命中目标ID不处罚',
+      '每行一个 QQ 号；这些用户命中违禁ID规则时不处罚',
       true,
     ),
     ctx.NapCatConfig.boolean(
@@ -371,13 +378,6 @@ function buildConfigUI(ctx) {
       '用户ID冷却中仍撤回',
       true,
       '开启后即便用户处于禁言冷却，用户ID命中后仍会尝试撤回消息',
-      true,
-    ),
-    ctx.NapCatConfig.boolean(
-      'onlyCheckTextMessage',
-      '仅检测文本消息',
-      true,
-      '开启后只检查 text 段内容，图片/卡片等非文本消息默认跳过',
       true,
     ),
   );
@@ -642,7 +642,9 @@ export const plugin_onmessage = async (ctx, event) => {
       if (isForbiddenSenderUserId(userId)) {
         hitReasons.push(`用户ID:${userId}`);
         hitUserId = true;
-        durationSeconds = Math.max(durationSeconds, runtime.config.userIdMuteDurationSeconds);
+        if (runtime.config.banUserIdOnHit) {
+          durationSeconds = Math.max(durationSeconds, runtime.config.userIdMuteDurationSeconds);
+        }
       }
     }
   }
