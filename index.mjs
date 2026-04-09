@@ -7,7 +7,6 @@ const DEFAULT_CONFIG = {
   keywordMuteDurationSeconds: 600,
   keywordGuardGroupIdsText: '',
   keywordWhitelistUserIdsText: '',
-  banDurationSeconds: 600,
   enableMentionGuard: false,
   mentionMuteDurationSeconds: 1800,
   mentionGuardGroupIdsText: '',
@@ -30,8 +29,6 @@ const DEFAULT_CONFIG = {
   recallUserIdWhenInCooldown: true,
   ignoreAdmin: true,
   ignoreOwner: true,
-  whitelistUserIdsText: '',
-  whitelistGroupIdsText: '',
   forbiddenWordsText: '测试违禁词\nbadword',
   regexRulesText: '\\bspam\\b',
   debug: false,
@@ -76,10 +73,20 @@ function splitTextList(value) {
     .filter(Boolean);
 }
 
-function splitNumberList(value) {
+function canonicalId(value) {
+  const text = String(value || '').trim();
+  if (!/^\d+$/.test(text)) return '';
+  try {
+    return BigInt(text).toString();
+  } catch (_error) {
+    return '';
+  }
+}
+
+function splitIdList(value) {
   return splitTextList(value)
-    .map((item) => Number(item))
-    .filter((num) => Number.isFinite(num) && num > 0);
+    .map((item) => canonicalId(item))
+    .filter(Boolean);
 }
 
 function sanitizeConfig(raw) {
@@ -90,100 +97,39 @@ function sanitizeConfig(raw) {
     if (typeof raw.enableKeywordGuard === 'boolean') cfg.enableKeywordGuard = raw.enableKeywordGuard;
     if (typeof raw.keywordMuteDurationSeconds === 'number') {
       cfg.keywordMuteDurationSeconds = raw.keywordMuteDurationSeconds;
-    } else if (typeof raw.banDurationSeconds === 'number') {
-      cfg.keywordMuteDurationSeconds = raw.banDurationSeconds;
-      cfg.banDurationSeconds = raw.banDurationSeconds;
     }
     if (typeof raw.enableMentionGuard === 'boolean') cfg.enableMentionGuard = raw.enableMentionGuard;
     if (typeof raw.mentionMuteDurationSeconds === 'number') {
       cfg.mentionMuteDurationSeconds = raw.mentionMuteDurationSeconds;
-    } else if (typeof raw.muteDuration === 'number') {
-      cfg.mentionMuteDurationSeconds = raw.muteDuration * 60;
     }
     if (typeof raw.enableUserIdGuard === 'boolean') cfg.enableUserIdGuard = raw.enableUserIdGuard;
     if (typeof raw.userIdMuteDurationSeconds === 'number') cfg.userIdMuteDurationSeconds = raw.userIdMuteDurationSeconds;
     if (typeof raw.banCooldownSeconds === 'number') cfg.banCooldownSeconds = raw.banCooldownSeconds;
     if (typeof raw.onlyCheckTextMessage === 'boolean') cfg.onlyCheckTextMessage = raw.onlyCheckTextMessage;
-    if (typeof raw.recallKeywordMessageOnHit === 'boolean') {
-      cfg.recallKeywordMessageOnHit = raw.recallKeywordMessageOnHit;
-    } else if (typeof raw.recallMessageOnHit === 'boolean') {
-      cfg.recallKeywordMessageOnHit = raw.recallMessageOnHit;
-    }
-    if (typeof raw.recallMentionMessageOnHit === 'boolean') {
-      cfg.recallMentionMessageOnHit = raw.recallMentionMessageOnHit;
-    } else if (typeof raw.recallMessageOnHit === 'boolean') {
-      cfg.recallMentionMessageOnHit = raw.recallMessageOnHit;
-    }
-    if (typeof raw.recallUserIdMessageOnHit === 'boolean') {
-      cfg.recallUserIdMessageOnHit = raw.recallUserIdMessageOnHit;
-    } else if (typeof raw.recallMessageOnHit === 'boolean') {
-      cfg.recallUserIdMessageOnHit = raw.recallMessageOnHit;
-    }
-    if (typeof raw.recallKeywordWhenInCooldown === 'boolean') {
-      cfg.recallKeywordWhenInCooldown = raw.recallKeywordWhenInCooldown;
-    } else if (typeof raw.recallWhenInCooldown === 'boolean') {
-      cfg.recallKeywordWhenInCooldown = raw.recallWhenInCooldown;
-    }
-    if (typeof raw.recallMentionWhenInCooldown === 'boolean') {
-      cfg.recallMentionWhenInCooldown = raw.recallMentionWhenInCooldown;
-    } else if (typeof raw.recallWhenInCooldown === 'boolean') {
-      cfg.recallMentionWhenInCooldown = raw.recallWhenInCooldown;
-    }
-    if (typeof raw.recallUserIdWhenInCooldown === 'boolean') {
-      cfg.recallUserIdWhenInCooldown = raw.recallUserIdWhenInCooldown;
-    } else if (typeof raw.recallWhenInCooldown === 'boolean') {
-      cfg.recallUserIdWhenInCooldown = raw.recallWhenInCooldown;
-    }
+    if (typeof raw.recallKeywordMessageOnHit === 'boolean') cfg.recallKeywordMessageOnHit = raw.recallKeywordMessageOnHit;
+    if (typeof raw.recallMentionMessageOnHit === 'boolean') cfg.recallMentionMessageOnHit = raw.recallMentionMessageOnHit;
+    if (typeof raw.recallUserIdMessageOnHit === 'boolean') cfg.recallUserIdMessageOnHit = raw.recallUserIdMessageOnHit;
+    if (typeof raw.recallKeywordWhenInCooldown === 'boolean') cfg.recallKeywordWhenInCooldown = raw.recallKeywordWhenInCooldown;
+    if (typeof raw.recallMentionWhenInCooldown === 'boolean') cfg.recallMentionWhenInCooldown = raw.recallMentionWhenInCooldown;
+    if (typeof raw.recallUserIdWhenInCooldown === 'boolean') cfg.recallUserIdWhenInCooldown = raw.recallUserIdWhenInCooldown;
     if (typeof raw.ignoreAdmin === 'boolean') cfg.ignoreAdmin = raw.ignoreAdmin;
     if (typeof raw.ignoreOwner === 'boolean') cfg.ignoreOwner = raw.ignoreOwner;
     if (typeof raw.debug === 'boolean') cfg.debug = raw.debug;
 
     if (raw.keywordGuardGroupIdsText !== undefined) {
       cfg.keywordGuardGroupIdsText = String(raw.keywordGuardGroupIdsText);
-    } else if (raw.whitelistGroupIdsText !== undefined) {
-      cfg.keywordGuardGroupIdsText = String(raw.whitelistGroupIdsText);
-      cfg.whitelistGroupIdsText = String(raw.whitelistGroupIdsText);
-    } else if (raw.whitelistGroupIds !== undefined) {
-      const value = splitNumberList(raw.whitelistGroupIds).join('\n');
-      cfg.keywordGuardGroupIdsText = value;
-      cfg.whitelistGroupIdsText = value;
     }
 
     if (raw.keywordWhitelistUserIdsText !== undefined) {
       cfg.keywordWhitelistUserIdsText = String(raw.keywordWhitelistUserIdsText);
-    } else if (raw.whitelistUserIdsText !== undefined) {
-      cfg.keywordWhitelistUserIdsText = String(raw.whitelistUserIdsText);
-      cfg.whitelistUserIdsText = String(raw.whitelistUserIdsText);
-    } else if (raw.whitelistUserIds !== undefined) {
-      const value = splitNumberList(raw.whitelistUserIds).join('\n');
-      cfg.keywordWhitelistUserIdsText = value;
-      cfg.whitelistUserIdsText = value;
-    }
-
-    if (raw.whitelistUserIdsText !== undefined) {
-      cfg.whitelistUserIdsText = String(raw.whitelistUserIdsText);
-    } else if (raw.whitelistUserIds !== undefined) {
-      cfg.whitelistUserIdsText = splitNumberList(raw.whitelistUserIds).join('\n');
-    }
-
-    if (raw.whitelistGroupIdsText !== undefined) {
-      cfg.whitelistGroupIdsText = String(raw.whitelistGroupIdsText);
-    } else if (raw.whitelistGroupIds !== undefined) {
-      cfg.whitelistGroupIdsText = splitNumberList(raw.whitelistGroupIds).join('\n');
     }
 
     if (raw.mentionGuardGroupIdsText !== undefined) {
       cfg.mentionGuardGroupIdsText = String(raw.mentionGuardGroupIdsText);
-    } else if (raw.monitoredGroups !== undefined) {
-      cfg.mentionGuardGroupIdsText = splitNumberList(raw.monitoredGroups).join('\n');
     }
 
     if (raw.mentionWhitelistUserIdsText !== undefined) {
       cfg.mentionWhitelistUserIdsText = String(raw.mentionWhitelistUserIdsText);
-    } else if (raw.mentionWhitelistUserIds !== undefined) {
-      cfg.mentionWhitelistUserIdsText = splitNumberList(raw.mentionWhitelistUserIds).join('\n');
-    } else if (raw.whitelistQQ !== undefined) {
-      cfg.mentionWhitelistUserIdsText = splitNumberList(raw.whitelistQQ).join('\n');
     }
 
     if (raw.userIdGuardGroupIdsText !== undefined) {
@@ -196,10 +142,6 @@ function sanitizeConfig(raw) {
 
     if (raw.forbiddenUserIdsText !== undefined) {
       cfg.forbiddenUserIdsText = String(raw.forbiddenUserIdsText);
-    } else if (raw.targetUserIdsText !== undefined) {
-      cfg.forbiddenUserIdsText = String(raw.targetUserIdsText);
-    } else if (raw.targetUserIds !== undefined) {
-      cfg.forbiddenUserIdsText = splitNumberList(raw.targetUserIds).join('\n');
     }
     if (typeof raw.userIdReplaceCardOnHit === 'boolean') cfg.userIdReplaceCardOnHit = raw.userIdReplaceCardOnHit;
     if (raw.userIdReplacementText !== undefined) cfg.userIdReplacementText = String(raw.userIdReplacementText);
@@ -207,14 +149,10 @@ function sanitizeConfig(raw) {
 
     if (raw.forbiddenWordsText !== undefined) {
       cfg.forbiddenWordsText = String(raw.forbiddenWordsText);
-    } else if (raw.forbiddenWords !== undefined) {
-      cfg.forbiddenWordsText = splitTextList(raw.forbiddenWords).join('\n');
     }
 
     if (raw.regexRulesText !== undefined) {
       cfg.regexRulesText = String(raw.regexRulesText);
-    } else if (raw.regexRules !== undefined) {
-      cfg.regexRulesText = splitTextList(raw.regexRules).join('\n');
     }
   }
 
@@ -222,7 +160,6 @@ function sanitizeConfig(raw) {
     1,
     Math.min(30 * 24 * 3600, Math.floor(Number(cfg.keywordMuteDurationSeconds) || 600)),
   );
-  cfg.banDurationSeconds = Math.max(1, Math.min(30 * 24 * 3600, Math.floor(Number(cfg.banDurationSeconds) || 600)));
   cfg.mentionMuteDurationSeconds = Math.max(
     1,
     Math.min(30 * 24 * 3600, Math.floor(Number(cfg.mentionMuteDurationSeconds) || 1800)),
@@ -240,13 +177,13 @@ function sanitizeConfig(raw) {
 function buildRuntimeCaches() {
   const cfg = runtime.config;
 
-  runtime.keywordGuardGroups = new Set(splitNumberList(cfg.keywordGuardGroupIdsText || cfg.whitelistGroupIdsText));
-  runtime.keywordWhitelistUsers = new Set(splitNumberList(cfg.keywordWhitelistUserIdsText || cfg.whitelistUserIdsText));
-  runtime.mentionGuardGroups = new Set(splitNumberList(cfg.mentionGuardGroupIdsText));
-  runtime.mentionWhitelistUsers = new Set(splitNumberList(cfg.mentionWhitelistUserIdsText));
-  runtime.userIdGuardGroups = new Set(splitNumberList(cfg.userIdGuardGroupIdsText));
-  runtime.userIdWhitelistUsers = new Set(splitNumberList(cfg.userIdWhitelistUserIdsText));
-  runtime.forbiddenUserIds = new Set(splitNumberList(cfg.forbiddenUserIdsText));
+  runtime.keywordGuardGroups = new Set(splitIdList(cfg.keywordGuardGroupIdsText));
+  runtime.keywordWhitelistUsers = new Set(splitIdList(cfg.keywordWhitelistUserIdsText));
+  runtime.mentionGuardGroups = new Set(splitIdList(cfg.mentionGuardGroupIdsText));
+  runtime.mentionWhitelistUsers = new Set(splitIdList(cfg.mentionWhitelistUserIdsText));
+  runtime.userIdGuardGroups = new Set(splitIdList(cfg.userIdGuardGroupIdsText));
+  runtime.userIdWhitelistUsers = new Set(splitIdList(cfg.userIdWhitelistUserIdsText));
+  runtime.forbiddenUserIds = new Set(splitIdList(cfg.forbiddenUserIdsText));
 
   runtime.keywordRules = splitTextList(cfg.forbiddenWordsText)
     .map((word) => normalizeText(word))
@@ -338,6 +275,21 @@ function buildConfigUI(ctx) {
       '开启后即便用户处于禁言冷却，关键词命中后仍会尝试撤回消息',
       true,
     ),
+    ctx.NapCatConfig.text(
+      'forbiddenWordsText',
+      '违禁词关键词',
+      '测试违禁词\nbadword',
+      '每行一个关键词；匹配时会忽略空白和大小写',
+      true,
+    ),
+    ctx.NapCatConfig.text(
+      'regexRulesText',
+      '违禁词正则（可选）',
+      '\\bspam\\b',
+      '每行一个正则表达式，大小写不敏感',
+      true,
+    ),
+    ctx.NapCatConfig.plainText('【@机器人板块】'),
     ctx.NapCatConfig.boolean('enableMentionGuard', '启用@机器人守卫', false, '命中@机器人后可单独触发禁言', true),
     ctx.NapCatConfig.number('mentionMuteDurationSeconds', '@机器人禁言时长（秒）', 1800, '仅在@机器人命中时使用该时长', true),
     ctx.NapCatConfig.text(
@@ -428,22 +380,6 @@ function buildConfigUI(ctx) {
       '开启后只检查 text 段内容，图片/卡片等非文本消息默认跳过',
       true,
     ),
-    ctx.NapCatConfig.text('whitelistUserIdsText', '兼容字段：全局白名单用户', '', '旧配置兼容字段；新配置建议使用关键词白名单', false),
-    ctx.NapCatConfig.text('whitelistGroupIdsText', '兼容字段：全局白名单群', '', '旧配置兼容字段；新配置建议使用关键词监控群聊', false),
-    ctx.NapCatConfig.text(
-      'forbiddenWordsText',
-      '违禁词关键词',
-      '测试违禁词\nbadword',
-      '每行一个关键词；匹配时会忽略空白和大小写',
-      true,
-    ),
-    ctx.NapCatConfig.text(
-      'regexRulesText',
-      '违禁词正则（可选）',
-      '\\bspam\\b',
-      '每行一个正则表达式，大小写不敏感',
-      true,
-    ),
   );
 }
 
@@ -522,7 +458,11 @@ function isAtUser(event, targetUserId) {
   const message = event?.message;
   if (Array.isArray(message)) {
     return message.some(
-      (seg) => seg && typeof seg === 'object' && String(seg.type || '').toLowerCase() === 'at' && String(seg?.data?.qq || '') === targetUserId,
+      (seg) =>
+        seg &&
+        typeof seg === 'object' &&
+        String(seg.type || '').toLowerCase() === 'at' &&
+        canonicalId(seg?.data?.qq) === targetUserId,
     );
   }
 
@@ -536,24 +476,22 @@ function isAtUser(event, targetUserId) {
 
 function isForbiddenSenderUserId(userId) {
   if (runtime.forbiddenUserIds.size === 0) return false;
-  return runtime.forbiddenUserIds.has(Number(userId));
+  return runtime.forbiddenUserIds.has(userId);
 }
 
 async function ensureBotUserId(ctx, event) {
   if (runtime.botUserId) return runtime.botUserId;
 
   const selfId = event?.self_id;
-  if (selfId !== undefined && selfId !== null && String(selfId).trim()) {
-    runtime.botUserId = String(selfId).trim();
+  const normalizedSelfId = canonicalId(selfId);
+  if (normalizedSelfId) {
+    runtime.botUserId = normalizedSelfId;
     return runtime.botUserId;
   }
 
   try {
     const info = await ctx.actions.call('get_login_info', undefined, ctx.adapterName, ctx.pluginManager.config);
-    const userId = info?.user_id;
-    if (userId !== undefined && userId !== null && String(userId).trim()) {
-      runtime.botUserId = String(userId).trim();
-    }
+    runtime.botUserId = canonicalId(info?.user_id);
   } catch (error) {
     if (runtime.config.debug) {
       ctx.logger.debug(`[CatPing] 获取机器人账号失败: ${error?.message || error}`);
@@ -563,7 +501,7 @@ async function ensureBotUserId(ctx, event) {
   return runtime.botUserId;
 }
 
-async function banUser(ctx, groupId, userId, reason, durationSeconds = runtime.config.banDurationSeconds) {
+async function banUser(ctx, groupId, userId, reason, durationSeconds = runtime.config.keywordMuteDurationSeconds) {
   const params = {
     group_id: String(groupId),
     user_id: String(userId),
@@ -642,16 +580,16 @@ export const plugin_onmessage = async (ctx, event) => {
     return;
   }
 
-  if (event?.post_type !== 'message' || event?.message_type !== 'group') {
+  if ((event?.post_type && event.post_type !== 'message') || (event?.message_type && event.message_type !== 'group')) {
     return;
   }
 
-  const groupId = Number(event.group_id);
-  const userId = Number(event.user_id);
+  const groupId = canonicalId(event.group_id);
+  const userId = canonicalId(event.user_id);
   const messageId = extractMessageId(event);
   const senderRole = String(event?.sender?.role || 'member').toLowerCase();
 
-  if (!Number.isFinite(groupId) || !Number.isFinite(userId)) {
+  if (!groupId || !userId) {
     return;
   }
 
