@@ -16,7 +16,10 @@ const DEFAULT_CONFIG = {
   userIdMuteDurationSeconds: 1800,
   userIdGuardGroupIdsText: '',
   userIdWhitelistUserIdsText: '',
-  targetUserIdsText: '',
+  forbiddenUserIdsText: '',
+  userIdReplaceCardOnHit: true,
+  userIdReplacementText: '非法id，请改回去',
+  banUserIdOnHit: false,
   banCooldownSeconds: 30,
   onlyCheckTextMessage: true,
   recallKeywordMessageOnHit: false,
@@ -47,7 +50,7 @@ const runtime = {
   mentionWhitelistUsers: new Set(),
   userIdGuardGroups: new Set(),
   userIdWhitelistUsers: new Set(),
-  targetUserIds: new Set(),
+  forbiddenUserIds: new Set(),
 };
 
 export let plugin_config_ui = [];
@@ -191,11 +194,16 @@ function sanitizeConfig(raw) {
       cfg.userIdWhitelistUserIdsText = String(raw.userIdWhitelistUserIdsText);
     }
 
-    if (raw.targetUserIdsText !== undefined) {
-      cfg.targetUserIdsText = String(raw.targetUserIdsText);
+    if (raw.forbiddenUserIdsText !== undefined) {
+      cfg.forbiddenUserIdsText = String(raw.forbiddenUserIdsText);
+    } else if (raw.targetUserIdsText !== undefined) {
+      cfg.forbiddenUserIdsText = String(raw.targetUserIdsText);
     } else if (raw.targetUserIds !== undefined) {
-      cfg.targetUserIdsText = splitNumberList(raw.targetUserIds).join('\n');
+      cfg.forbiddenUserIdsText = splitNumberList(raw.targetUserIds).join('\n');
     }
+    if (typeof raw.userIdReplaceCardOnHit === 'boolean') cfg.userIdReplaceCardOnHit = raw.userIdReplaceCardOnHit;
+    if (raw.userIdReplacementText !== undefined) cfg.userIdReplacementText = String(raw.userIdReplacementText);
+    if (typeof raw.banUserIdOnHit === 'boolean') cfg.banUserIdOnHit = raw.banUserIdOnHit;
 
     if (raw.forbiddenWordsText !== undefined) {
       cfg.forbiddenWordsText = String(raw.forbiddenWordsText);
@@ -223,6 +231,7 @@ function sanitizeConfig(raw) {
     1,
     Math.min(30 * 24 * 3600, Math.floor(Number(cfg.userIdMuteDurationSeconds) || 1800)),
   );
+  cfg.userIdReplacementText = String(cfg.userIdReplacementText || '非法id，请改回去').trim() || '非法id，请改回去';
   cfg.banCooldownSeconds = Math.max(0, Math.min(3600, Math.floor(Number(cfg.banCooldownSeconds) || 30)));
 
   return cfg;
@@ -237,7 +246,7 @@ function buildRuntimeCaches() {
   runtime.mentionWhitelistUsers = new Set(splitNumberList(cfg.mentionWhitelistUserIdsText));
   runtime.userIdGuardGroups = new Set(splitNumberList(cfg.userIdGuardGroupIdsText));
   runtime.userIdWhitelistUsers = new Set(splitNumberList(cfg.userIdWhitelistUserIdsText));
-  runtime.targetUserIds = new Set(splitNumberList(cfg.targetUserIdsText).map((id) => String(id)));
+  runtime.forbiddenUserIds = new Set(splitNumberList(cfg.forbiddenUserIdsText));
 
   runtime.keywordRules = splitTextList(cfg.forbiddenWordsText)
     .map((word) => normalizeText(word))
@@ -363,10 +372,10 @@ function buildConfigUI(ctx) {
     ctx.NapCatConfig.boolean('enableUserIdGuard', '启用用户ID检测', false, '检测消息中命中的目标用户ID', true),
     ctx.NapCatConfig.number('userIdMuteDurationSeconds', '用户ID命中禁言时长（秒）', 1800, '仅用户ID命中时使用', true),
     ctx.NapCatConfig.text(
-      'targetUserIdsText',
-      '目标用户ID列表',
+      'forbiddenUserIdsText',
+      '违禁用户ID列表',
       '',
-      '每行一个 QQ 号；命中任一目标ID即触发',
+      '每行一个 QQ 号；发言者ID命中列表即触发',
       true,
     ),
     ctx.NapCatConfig.text(
@@ -383,6 +392,21 @@ function buildConfigUI(ctx) {
       '每行一个 QQ 号；这些用户命中目标ID不处罚',
       true,
     ),
+    ctx.NapCatConfig.boolean(
+      'userIdReplaceCardOnHit',
+      '用户ID命中后修改群名片',
+      true,
+      '开启后会尝试将群名片改为下方文本',
+      true,
+    ),
+    ctx.NapCatConfig.text(
+      'userIdReplacementText',
+      '用户ID命中替换名片文本',
+      '非法id，请改回去',
+      '用于 set_group_card 的 card 文本',
+      true,
+    ),
+    ctx.NapCatConfig.boolean('banUserIdOnHit', '用户ID命中后执行禁言', false, '关闭后仅改名片/撤回，不执行禁言', true),
     ctx.NapCatConfig.boolean(
       'recallUserIdMessageOnHit',
       '用户ID命中后撤回',
@@ -510,47 +534,9 @@ function isAtUser(event, targetUserId) {
   return atRegex.test(raw);
 }
 
-function findMatchedTargetUserIds(event) {
-  if (runtime.targetUserIds.size === 0) return [];
-
-  const matched = new Set();
-  const message = event?.message;
-
-  if (Array.isArray(message)) {
-    for (const seg of message) {
-      if (!seg || typeof seg !== 'object') continue;
-
-      const type = String(seg.type || '').toLowerCase();
-      if (type === 'at') {
-        const atId = String(seg?.data?.qq || '').trim();
-        if (atId && runtime.targetUserIds.has(atId)) matched.add(atId);
-        continue;
-      }
-
-      if (type === 'text') {
-        const text = String(seg?.data?.text || '');
-        for (const targetId of runtime.targetUserIds) {
-          const escaped = targetId.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-          const idRegex = new RegExp(`(^|[^0-9])${escaped}([^0-9]|$)`);
-          if (idRegex.test(text)) matched.add(targetId);
-        }
-      }
-    }
-  }
-
-  const raw = String(event?.raw_message || '');
-  if (raw) {
-    for (const targetId of runtime.targetUserIds) {
-      const escaped = targetId.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-      const cqAtRegex = new RegExp(`\\[CQ:at,qq=${escaped}(?:,|\\])`);
-      const plainIdRegex = new RegExp(`(^|[^0-9])${escaped}([^0-9]|$)`);
-      if (cqAtRegex.test(raw) || plainIdRegex.test(raw)) {
-        matched.add(targetId);
-      }
-    }
-  }
-
-  return [...matched];
+function isForbiddenSenderUserId(userId) {
+  if (runtime.forbiddenUserIds.size === 0) return false;
+  return runtime.forbiddenUserIds.has(Number(userId));
 }
 
 async function ensureBotUserId(ctx, event) {
@@ -619,6 +605,26 @@ async function recallMessage(ctx, messageId, reason) {
   }
 }
 
+async function updateGroupCard(ctx, groupId, userId, cardText, reason) {
+  if (!cardText) return;
+
+  const params = {
+    group_id: String(groupId),
+    user_id: String(userId),
+    card: String(cardText),
+  };
+
+  try {
+    const res = await ctx.actions.call('set_group_card', params, ctx.adapterName, ctx.pluginManager.config);
+    ctx.logger.info(`[CatPing] 已修改群名片 群:${groupId} 用户:${userId} 文本:${cardText} 原因:${reason}`);
+    if (runtime.config.debug) {
+      ctx.logger.debug('[CatPing] set_group_card 返回:', res);
+    }
+  } catch (error) {
+    ctx.logger.error(`[CatPing] 修改群名片失败 群:${groupId} 用户:${userId} 原因:${reason}`, error);
+  }
+}
+
 export const plugin_init = async (ctx) => {
   runtime.ctx = ctx;
   loadConfig(ctx);
@@ -627,7 +633,7 @@ export const plugin_init = async (ctx) => {
   plugin_config_schema = plugin_config_ui;
 
   ctx.logger.info(
-    `[CatPing] 初始化完成，关键词守卫:${runtime.config.enableKeywordGuard ? '开' : '关'}，@守卫:${runtime.config.enableMentionGuard ? '开' : '关'}，用户ID守卫:${runtime.config.enableUserIdGuard ? '开' : '关'}，关键词 ${runtime.keywordRules.length} 个，正则 ${runtime.regexRules.length} 条，目标ID ${runtime.targetUserIds.size} 个`,
+    `[CatPing] 初始化完成，关键词守卫:${runtime.config.enableKeywordGuard ? '开' : '关'}，@守卫:${runtime.config.enableMentionGuard ? '开' : '关'}，用户ID守卫:${runtime.config.enableUserIdGuard ? '开' : '关'}，关键词 ${runtime.keywordRules.length} 个，正则 ${runtime.regexRules.length} 条，违禁ID ${runtime.forbiddenUserIds.size} 个`,
   );
 };
 
@@ -695,9 +701,8 @@ export const plugin_onmessage = async (ctx, event) => {
     const groupAllowed = runtime.userIdGuardGroups.size === 0 || runtime.userIdGuardGroups.has(groupId);
     const userAllowed = !runtime.userIdWhitelistUsers.has(userId);
     if (groupAllowed && userAllowed) {
-      const matchedUserIds = findMatchedTargetUserIds(event);
-      if (matchedUserIds.length > 0) {
-        hitReasons.push(`用户ID:${matchedUserIds.join(',')}`);
+      if (isForbiddenSenderUserId(userId)) {
+        hitReasons.push(`用户ID:${userId}`);
         hitUserId = true;
         durationSeconds = Math.max(durationSeconds, runtime.config.userIdMuteDurationSeconds);
       }
@@ -732,7 +737,13 @@ export const plugin_onmessage = async (ctx, event) => {
     await recallMessage(ctx, messageId, hitReasonText);
   }
 
-  await banUser(ctx, groupId, userId, hitReasonText, durationSeconds);
+  if (hitUserId && runtime.config.userIdReplaceCardOnHit) {
+    await updateGroupCard(ctx, groupId, userId, runtime.config.userIdReplacementText, hitReasonText);
+  }
+
+  if (durationSeconds > 0 && (!hitUserId || runtime.config.banUserIdOnHit || hitKeyword || hitMention)) {
+    await banUser(ctx, groupId, userId, hitReasonText, durationSeconds);
+  }
 };
 
 export const plugin_cleanup = async (ctx) => {
