@@ -10,8 +10,10 @@ const DEFAULT_CONFIG = {
   mentionWhitelistUserIdsText: '',
   banCooldownSeconds: 30,
   onlyCheckTextMessage: true,
-  recallMessageOnHit: false,
-  recallWhenInCooldown: true,
+  recallKeywordMessageOnHit: false,
+  recallMentionMessageOnHit: false,
+  recallKeywordWhenInCooldown: true,
+  recallMentionWhenInCooldown: true,
   ignoreAdmin: true,
   ignoreOwner: true,
   whitelistUserIdsText: '',
@@ -77,8 +79,26 @@ function sanitizeConfig(raw) {
     }
     if (typeof raw.banCooldownSeconds === 'number') cfg.banCooldownSeconds = raw.banCooldownSeconds;
     if (typeof raw.onlyCheckTextMessage === 'boolean') cfg.onlyCheckTextMessage = raw.onlyCheckTextMessage;
-    if (typeof raw.recallMessageOnHit === 'boolean') cfg.recallMessageOnHit = raw.recallMessageOnHit;
-    if (typeof raw.recallWhenInCooldown === 'boolean') cfg.recallWhenInCooldown = raw.recallWhenInCooldown;
+    if (typeof raw.recallKeywordMessageOnHit === 'boolean') {
+      cfg.recallKeywordMessageOnHit = raw.recallKeywordMessageOnHit;
+    } else if (typeof raw.recallMessageOnHit === 'boolean') {
+      cfg.recallKeywordMessageOnHit = raw.recallMessageOnHit;
+    }
+    if (typeof raw.recallMentionMessageOnHit === 'boolean') {
+      cfg.recallMentionMessageOnHit = raw.recallMentionMessageOnHit;
+    } else if (typeof raw.recallMessageOnHit === 'boolean') {
+      cfg.recallMentionMessageOnHit = raw.recallMessageOnHit;
+    }
+    if (typeof raw.recallKeywordWhenInCooldown === 'boolean') {
+      cfg.recallKeywordWhenInCooldown = raw.recallKeywordWhenInCooldown;
+    } else if (typeof raw.recallWhenInCooldown === 'boolean') {
+      cfg.recallKeywordWhenInCooldown = raw.recallWhenInCooldown;
+    }
+    if (typeof raw.recallMentionWhenInCooldown === 'boolean') {
+      cfg.recallMentionWhenInCooldown = raw.recallMentionWhenInCooldown;
+    } else if (typeof raw.recallWhenInCooldown === 'boolean') {
+      cfg.recallMentionWhenInCooldown = raw.recallWhenInCooldown;
+    }
     if (typeof raw.ignoreAdmin === 'boolean') cfg.ignoreAdmin = raw.ignoreAdmin;
     if (typeof raw.ignoreOwner === 'boolean') cfg.ignoreOwner = raw.ignoreOwner;
     if (typeof raw.debug === 'boolean') cfg.debug = raw.debug;
@@ -220,12 +240,32 @@ function buildConfigUI(ctx) {
       '开启后只检查 text 段内容，图片/卡片等非文本消息默认跳过',
       true,
     ),
-    ctx.NapCatConfig.boolean('recallMessageOnHit', '命中后撤回消息', false, '开启后命中违禁词会调用 delete_msg 撤回原消息', true),
     ctx.NapCatConfig.boolean(
-      'recallWhenInCooldown',
-      '冷却中仍撤回',
+      'recallKeywordMessageOnHit',
+      '违禁词命中后撤回',
+      false,
+      '开启后违禁词命中会调用 delete_msg 撤回原消息',
       true,
-      '开启后即便用户处于禁言冷却，命中后仍会尝试撤回消息',
+    ),
+    ctx.NapCatConfig.boolean(
+      'recallMentionMessageOnHit',
+      '@机器人命中后撤回',
+      false,
+      '开启后@机器人命中会调用 delete_msg 撤回原消息',
+      true,
+    ),
+    ctx.NapCatConfig.boolean(
+      'recallKeywordWhenInCooldown',
+      '违禁词冷却中仍撤回',
+      true,
+      '开启后即便用户处于禁言冷却，违禁词命中后仍会尝试撤回消息',
+      true,
+    ),
+    ctx.NapCatConfig.boolean(
+      'recallMentionWhenInCooldown',
+      '@机器人冷却中仍撤回',
+      true,
+      '开启后即便用户处于禁言冷却，@机器人命中后仍会尝试撤回消息',
       true,
     ),
     ctx.NapCatConfig.boolean('ignoreAdmin', '忽略管理员', true, '管理员命中后不处罚', true),
@@ -423,7 +463,7 @@ export const plugin_init = async (ctx) => {
   plugin_config_schema = plugin_config_ui;
 
   ctx.logger.info(
-    `[CatPing] 初始化完成，关键词 ${runtime.keywordRules.length} 个，正则 ${runtime.regexRules.length} 条，@守卫:${runtime.config.enableMentionGuard ? '开' : '关'}，撤回:${runtime.config.recallMessageOnHit ? '开' : '关'}`,
+    `[CatPing] 初始化完成，关键词 ${runtime.keywordRules.length} 个，正则 ${runtime.regexRules.length} 条，@守卫:${runtime.config.enableMentionGuard ? '开' : '关'}，违禁词撤回:${runtime.config.recallKeywordMessageOnHit ? '开' : '关'}，@撤回:${runtime.config.recallMentionMessageOnHit ? '开' : '关'}`,
   );
 };
 
@@ -463,6 +503,8 @@ export const plugin_onmessage = async (ctx, event) => {
 
   const contentForMatch = runtime.config.onlyCheckTextMessage ? extractTextForMatch(event) : String(event.raw_message || '');
   const hitReasons = [];
+  let hitKeyword = false;
+  let hitMention = false;
   let durationSeconds = runtime.config.banDurationSeconds;
 
   if (runtime.config.enableMentionGuard) {
@@ -472,6 +514,7 @@ export const plugin_onmessage = async (ctx, event) => {
       const botUserId = await ensureBotUserId(ctx, event);
       if (botUserId && isAtUser(event, botUserId)) {
         hitReasons.push('@机器人');
+        hitMention = true;
         durationSeconds = Math.max(durationSeconds, runtime.config.mentionMuteDurationSeconds);
       }
     }
@@ -480,15 +523,20 @@ export const plugin_onmessage = async (ctx, event) => {
   const matched = matchRule(contentForMatch);
   if (matched) {
     hitReasons.push(matched);
+    hitKeyword = true;
   }
 
   if (hitReasons.length === 0) {
     return;
   }
   const hitReasonText = hitReasons.join(' + ');
+  const shouldRecallOnHit =
+    (hitKeyword && runtime.config.recallKeywordMessageOnHit) || (hitMention && runtime.config.recallMentionMessageOnHit);
+  const shouldRecallInCooldown =
+    (hitKeyword && runtime.config.recallKeywordWhenInCooldown) || (hitMention && runtime.config.recallMentionWhenInCooldown);
 
   if (inCooldown(groupId, userId)) {
-    if (runtime.config.recallMessageOnHit && runtime.config.recallWhenInCooldown) {
+    if (shouldRecallOnHit && shouldRecallInCooldown) {
       await recallMessage(ctx, messageId, `${hitReasonText}(冷却期仅撤回)`);
     }
 
@@ -498,7 +546,7 @@ export const plugin_onmessage = async (ctx, event) => {
     return;
   }
 
-  if (runtime.config.recallMessageOnHit) {
+  if (shouldRecallOnHit) {
     await recallMessage(ctx, messageId, hitReasonText);
   }
 
