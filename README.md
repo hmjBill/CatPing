@@ -86,7 +86,7 @@ napcat-plugin-catping/
 用户 ID 板块：
 - `enableUserIdGuard`
 - `userIdMuteDurationSeconds`
-- `forbiddenUserIdsText`（违禁 ID 列表，每行一个，检测发言者群名片/昵称）
+- `forbiddenUserIdsText`（违禁昵称词条列表，每行一个，检测发言者群名片/昵称）
 - `userIdGuardGroupIdsText`
 - `userIdWhitelistUserIdsText`
 - `userIdReplaceCardOnHit`（命中后是否修改群名片）
@@ -165,7 +165,7 @@ napcat-plugin-catping/
 
   "enableUserIdGuard": true,
   "userIdMuteDurationSeconds": 1200,
-  "forbiddenUserIdsText": "12345678\n87654321",
+  "forbiddenUserIdsText": "黄焖鸡\n测试违禁昵称",
   "userIdGuardGroupIdsText": "100001",
   "userIdWhitelistUserIdsText": "10000",
   "userIdReplaceCardOnHit": true,
@@ -191,7 +191,7 @@ napcat-plugin-catping/
 - `keywordGuardGroupIdsText` 留空表示关键词板块在所有群生效。
 - `mentionGuardGroupIdsText` 留空表示所有群都参与 `@机器人` 守卫。
 - `userIdGuardGroupIdsText` 留空表示用户 ID 板块在所有群生效。
-- 用户 ID 板块检测的是“发言者群名片/昵称是否包含违禁ID”。
+- 用户 ID 板块检测的是“发言者群名片/昵称是否包含违禁词条（忽略空白和大小写）”。
 
 ## 触发逻辑
 
@@ -201,7 +201,7 @@ napcat-plugin-catping/
 2. 判断是否为管理员/群主（可免罚）
 3. 关键词板块：按关键词监控群 + 白名单用户过滤后执行关键词/正则匹配
 4. `@机器人` 板块：按守卫群 + 白名单用户过滤后检测 `@机器人`
-5. 用户 ID 板块：按监控群 + 白名单用户过滤后检测发言者群名片/昵称是否包含违禁ID
+5. 用户 ID 板块：按监控群 + 白名单用户过滤后检测发言者群名片/昵称是否包含违禁词条
 6. 任一板块命中后进入处罚流程；若同时命中，处罚原因会合并记录，禁言时长取命中板块中的较大值
 7. 若用户 ID 板块命中且 `userIdReplaceCardOnHit=true`，调用 `set_group_card` 把群名片改为 `userIdReplacementText`
 8. 若命中且对应撤回开关开启，则调用 `delete_msg` 撤回原消息
