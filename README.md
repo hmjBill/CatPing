@@ -177,26 +177,9 @@ napcat-plugin-catping/
 }
 ```
 
-### 3. 兼容旧格式（数组）
+### 3. 字段模式
 
-插件仍兼容旧字段（数组）：
-
-- `forbiddenWords`
-- `regexRules`
-- `whitelistUserIds`（映射到 `keywordWhitelistUserIdsText`）
-- `whitelistGroupIds`（映射到 `keywordGuardGroupIdsText`）
-- `banDurationSeconds`（映射到 `keywordMuteDurationSeconds`）
-- `monitoredGroups`（映射到 `mentionGuardGroupIdsText`）
-- `whitelistQQ`（映射到 `mentionWhitelistUserIdsText`）
-- `muteDuration`（分钟，映射到 `mentionMuteDurationSeconds`）
-- `recallMessageOnHit`（映射到 `recallKeywordMessageOnHit` / `recallMentionMessageOnHit` / `recallUserIdMessageOnHit`）
-- `recallWhenInCooldown`（映射到 `recallKeywordWhenInCooldown` / `recallMentionWhenInCooldown` / `recallUserIdWhenInCooldown`）
-- `targetUserIds`（映射到 `forbiddenUserIdsText`）
-
-优先级规则：
-
-- 若同时存在，新字段（`xxxText`）优先
-- 新字段不存在时，才读取旧字段
+当前版本仅使用三板块新字段（关键词 / `@机器人` / 用户 ID），不再读取旧兼容字段。
 
 ### 4. 常见注意点
 
